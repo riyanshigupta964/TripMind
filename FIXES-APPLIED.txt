@@ -1,0 +1,18 @@
+TripMind update
+
+Changes:
+- Airport lookups now cache successful results in memory for the running process.
+- Airport lookup queries no longer incorrectly append "India" to international destinations.
+- Airport lookup output is smaller to reduce model input tokens.
+- Agent instructions discourage duplicate tool calls and unnecessary alternate-airport searches.
+- Groq token-rate-limit and agent-loop errors now return clearer user-facing messages.
+- Agent execution has a recursion limit to stop runaway loops.
+
+Security:
+- The .env file is intentionally excluded. Keep your existing .env file in your local project.
+- Virtual environments and .git data are excluded. Continue using your existing .venv312 environment.
+
+Important:
+- Caching only lasts while the app's Python process is running.
+- A code change cannot guarantee that Groq never returns a rate-limit error; free-tier quotas are controlled by Groq.
+- Test in your existing project after backing up your current files.
