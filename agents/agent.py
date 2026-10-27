@@ -33,7 +33,7 @@ MODEL = ChatGroq(
     model="qwen/qwen3.8-27b",
     temperature=0,
     max_retries=1,
-    max_tokens=800,
+    max_tokens=1500,
     reasoning_effort="none",
 )
 
@@ -256,30 +256,26 @@ def chat_invoke(message: str, thread_id: str) -> str:
         result = agent.invoke(
             {"messages": [{"role": "user", "content": message}]},
             config={
-                "recursion_limit": 12,
+                "recursion_limit": 8,
                 "configurable": {"thread_id": thread_id},
             },
         )
+
         messages = result.get("messages", [])
 
-        # Search backward for the final assistant response.
         for msg in reversed(messages):
             role = getattr(msg, "type", "")
             content = getattr(msg, "content", "")
 
-            # Ignore human and tool messages.
             if role != "ai":
                 continue
 
-            # Ignore assistant messages that only request tool calls.
             if getattr(msg, "tool_calls", []):
                 continue
 
-            # Return a normal text response.
             if isinstance(content, str) and content.strip():
                 return _ensure_json(content.strip())
 
-            # Handle responses represented as text blocks.
             if isinstance(content, list):
                 text_parts = [
                     item.get("text", "")
@@ -295,12 +291,14 @@ def chat_invoke(message: str, thread_id: str) -> str:
 
         return json.dumps({
             "type": "text",
-            "content": "TripMind could not produce a final response. Please try again."
+            "content": (
+                "TripMind could not produce a final response. "
+                "Please try again."
+            ),
         })
 
     except Exception as e:
         traceback.print_exc()
-
         error_message = str(e).lower()
 
         if (
@@ -310,23 +308,26 @@ def chat_invoke(message: str, thread_id: str) -> str:
             or "error code: 413" in error_message
         ):
             user_message = (
-                "TripMind temporarily reached Groq's free-tier token rate limit. "
-                "Wait about 60 seconds, then try again with a shorter message. "
-                "No paid upgrade is required to handle this error; availability "
-                "depends on the provider's current free-tier limits."
+                "TripMind temporarily reached Groq's rate limit. "
+                "Please wait before trying again."
             )
-        elif "recursion limit" in error_message or "graphrecursionerror" in error_message:
+
+        elif (
+            "recursion limit" in error_message
+            or "graphrecursionerror" in error_message
+        ):
             user_message = (
-                "TripMind stopped a repeated tool-call loop to avoid excessive API use. "
-                "Please try again with the trip details in one message, including "
-                "origin, destination and country, dates, budget in INR, and travelers."
+                "TripMind stopped because of repeated tool calls. "
+                "Please try again with all trip details in one message."
             )
+
         else:
             user_message = (
-                f"TripMind encountered an error: {type(e).__name__}: {e}"
+                f"TripMind encountered an error: "
+                f"{type(e).__name__}: {e}"
             )
 
         return json.dumps({
             "type": "text",
-            "content": user_message
+            "content": user_message,
         })
