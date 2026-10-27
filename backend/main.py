@@ -42,30 +42,106 @@ def health():
     return {"status": "ok", "service": "TripMind API", "version": app.version}
 
 @app.post("/api/plan", response_model=PlanResponse)
+
 def create_plan(payload: PlanRequest):
-    """Generate a plan through the existing agent, then optionally persist it."""
+    """Generate a trip plan, validate the response, and optionally save it."""
     prompt = (
-        f"Plan a trip from {payload.origin} to {payload.destination}, from {payload.start_date.isoformat()} "
-        f"to {payload.end_date.isoformat()}, for {payload.travelers} traveler(s), total budget â‚¹{payload.budget_inr:,} INR. "
-        f"Travel vibe: {payload.vibe}. Preferences: {', '.join(payload.preferences) if payload.preferences else 'balanced general recommendations'}. "
-        "Return a concise complete trip plan with flight, hotel, weather, day-wise itinerary, budget breakdown, and packing suggestions. "
-        "Do not invent live prices or availability; clearly label estimates and unavailable data."
+        f"Plan a trip from {payload.origin} to {payload.destination}, from "
+        f"{payload.start_date.isoformat()} to {payload.end_date.isoformat()}, "
+        f"for {payload.travelers} traveler(s), with a total budget of "
+        f"INR {payload.budget_inr:,} for all travelers. "
+        f"Travel vibe: {payload.vibe}. "
+        f"Preferences: {', '.join(payload.preferences) if payload.preferences else 'balanced general recommendations'}. "
+        "Return a complete trip plan containing flights, hotel, weather, "
+        "day-wise itinerary, budget breakdown, and packing suggestions. "
+        "Do not invent live prices, bookings, or availability. "
+        "Clearly distinguish confirmed search results, estimates, and unavailable data. "
+        "Calculate the total estimated cost for all travelers and compare it "
+        "with the total budget. If the estimated total exceeds the budget, "
+        "explicitly mark the plan OVER BUDGET and state the shortfall. "
+        "Never claim that an over-budget plan fits the budget."
     )
+
     try:
         from agents.agent import chat_invoke
+
         raw = chat_invoke(prompt, thread_id=str(uuid.uuid4()))
+
         try:
             parsed = json.loads(raw) if isinstance(raw, str) else raw
         except (json.JSONDecodeError, TypeError):
             parsed = {"type": "text", "content": str(raw)}
+
+        # Reject empty or invalid agent responses.
+        if not isinstance(parsed, dict) or not parsed:
+            raise HTTPException(
+                status_code=503,
+                detail="The AI returned an invalid trip plan. Please try again."
+            )
+
+        # The agent can return an error as a text response without raising
+        # an exception. Do not report that as a successful plan.
+        content = str(parsed.get("content", "")).strip()
+        plan_type = str(parsed.get("type", "")).lower()
+
+        if (
+            "error" in plan_type
+            or content.lower().startswith("tripmind encountered an error")
+            or not parsed.get("type")
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail="Trip planning failed. Please try again later."
+            )
+
+        # The agent sometimes returns its JSON plan inside a string.
+        if isinstance(parsed.get("content"), str):
+            inner_content = parsed["content"].strip()
+
+            if inner_content.startswith("{"):
+                try:
+                    inner_parsed = json.loads(inner_content)
+                    if isinstance(inner_parsed, dict):
+                        parsed = inner_parsed
+                except json.JSONDecodeError:
+                    pass
+
+        # Save only after receiving a non-empty response.
         saved = _save_trip(payload, parsed)
-        return PlanResponse(ok=True, plan=parsed, saved=saved, message="Trip plan generated." + (" Saved to Supabase." if saved else ""))
+
+        return PlanResponse(
+            ok=True,
+            plan=parsed,
+            saved=saved,
+            message=(
+                "Trip plan generated."
+                + (" Saved to Supabase." if saved else " Not saved to Supabase.")
+            ),
+        )
+
+    except HTTPException:
+        raise
+
     except Exception as exc:
-        # Avoid leaking secrets or internal tracebacks to the browser.
-        import traceback; traceback.print_exc(); message = str(exc).lower()
-        if "429" in message or "rate limit" in message or "tokens per day" in message:
-            raise HTTPException(status_code=429, detail="The AI provider's token limit has been reached. Wait for quota reset and retry.") from exc
-        raise HTTPException(status_code=503, detail="Trip planning is temporarily unavailable. Check backend logs and API configuration.") from exc
+        import traceback
+        traceback.print_exc()
+
+        message = str(exc).lower()
+
+        if (
+            "429" in message
+            or "rate limit" in message
+            or "tokens per day" in message
+        ):
+            raise HTTPException(
+                status_code=429,
+                detail="The AI provider's token limit has been reached. Wait for quota reset and retry."
+            ) from exc
+
+        raise HTTPException(
+            status_code=503,
+            detail="Trip planning is temporarily unavailable. Check backend logs and API configuration."
+        ) from exc
 
 def _save_trip(payload: PlanRequest, plan: Any) -> bool:
     """Optional Supabase REST persistence. App remains usable without Supabase."""
