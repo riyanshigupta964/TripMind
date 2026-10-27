@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Plane, MapPin, CalendarDays, Users, Wallet, Sparkles, Compass, CloudSun, Hotel, Route, LoaderCircle, AlertCircle } from 'lucide-react';
 import './styles.css';
 
-const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API = import.meta.env.VITE_API_URL || 'https://tripmind-9che.onrender.com';
 const choices = ['Nature', 'Food', 'Adventure', 'Culture', 'Beaches', 'Shopping', 'Relaxation'];
 function App() {
   const [form, setForm] = useState({origin:'Bhopal, India', destination:'Goa, India', start_date:'2026-11-15', end_date:'2026-11-18', travelers:2, budget_inr:100000, vibe:'balanced', preferences:['Beaches','Food']});
