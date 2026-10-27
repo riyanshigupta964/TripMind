@@ -12,7 +12,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(ROOT, ".env"))
 
 app = FastAPI(title="TripMind API", version="1.0.0", description="AI-powered personalized travel planning API")
-app.add_middleware(CORSMiddleware, allow_origins=os.getenv("FRONTEND_ORIGINS", "https://tripmind-frontend-8oqe.onrender.com,http://localhost:5173,http://127.0.0.1:5173").split(","), allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://tripmind-frontend-8oqe.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 class PlanRequest(BaseModel):
     origin: str = Field(min_length=2, max_length=100)
     destination: str = Field(min_length=2, max_length=100)
